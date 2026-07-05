@@ -45,23 +45,3 @@ class User(AbstractUser):
     @property
     def is_client(self):
         return self.role == self.Role.CLIENT
-
-
-class VendorProfile(models.Model):
-    """Manufacturer profile attached to a vendor user."""
-
-    user = models.OneToOneField(
-        User,
-        on_delete=models.CASCADE,
-        related_name='vendor_profile',
-    )
-    company_name = models.CharField(max_length=255)
-    location = models.CharField(max_length=255, blank=True)
-    # e.g. ["hoodies", "jackets", "football kits"]
-    specialties = models.JSONField(default=list, blank=True)
-    # Approximate production capacity (units per month).
-    capacity = models.PositiveIntegerField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.company_name

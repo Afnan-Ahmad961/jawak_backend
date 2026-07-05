@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import User, VendorProfile
+from .models import User
 
 
 @admin.register(User)
@@ -20,9 +20,3 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('email', 'username', 'role', 'password1', 'password2'),
         }),
     )
-
-
-@admin.register(VendorProfile)
-class VendorProfileAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'user', 'location', 'capacity', 'created_at')
-    search_fields = ('company_name', 'user__email')

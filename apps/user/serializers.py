@@ -1,27 +1,10 @@
 from rest_framework import serializers
 
-from .models import User, VendorProfile
-
-
-class VendorProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = VendorProfile
-        fields = [
-            'id',
-            'company_name',
-            'location',
-            'specialties',
-            'capacity',
-            'created_at',
-        ]
-        read_only_fields = ['id', 'created_at']
+from .models import User
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """Read-only view of the authenticated user, including the vendor
-    profile when present."""
-
-    vendor_profile = VendorProfileSerializer(read_only=True)
+    """Read-only view of the authenticated user."""
 
     class Meta:
         model = User
@@ -33,7 +16,6 @@ class UserSerializer(serializers.ModelSerializer):
             'google_uid',
             'first_name',
             'last_name',
-            'vendor_profile',
             'created_at',
         ]
         read_only_fields = fields

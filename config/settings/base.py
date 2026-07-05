@@ -50,9 +50,13 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'dj_rest_auth.registration',
+    'storages',
 
     # Local apps
     'apps.user',
+    'apps.vendors',
+    'apps.design_requests',
+    'apps.bids',
 ]
 
 MIDDLEWARE = [
@@ -219,5 +223,37 @@ SOCIALACCOUNT_PROVIDERS = {
         },
         'SCOPE': ['profile', 'email'],
         'AUTH_PARAMS': {'access_type': 'online'},
+    },
+}
+
+
+# Media & file storage
+# Uploaded files (e.g. design images) go to S3 when AWS credentials are
+# present in the environment; otherwise they fall back to local media so the
+# project runs without any cloud setup in development.
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
+AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME')
+
+_USE_S3 = bool(
+    AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and AWS_STORAGE_BUCKET_NAME
+)
+
+if _USE_S3:
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = False
+    _default_storage = {'BACKEND': 'storages.backends.s3.S3Storage'}
+else:
+    _default_storage = {'BACKEND': 'django.core.files.storage.FileSystemStorage'}
+
+STORAGES = {
+    'default': _default_storage,
+    'staticfiles': {
+        'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'
     },
 }
