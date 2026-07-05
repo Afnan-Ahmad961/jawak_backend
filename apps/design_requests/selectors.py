@@ -17,4 +17,12 @@ def open_requests():
 
 
 def design_request_get(*, request_id):
-    return DesignRequest.objects.select_related('client').get(id=request_id)
+    return (
+        DesignRequest.objects.select_related('client')
+        .prefetch_related('reference_images')
+        .get(id=request_id)
+    )
+
+
+def reference_image_get(*, design_request, image_id):
+    return design_request.reference_images.get(id=image_id)

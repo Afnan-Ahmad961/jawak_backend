@@ -108,3 +108,25 @@ class BidStatusUpdateView(APIView):
             raise ValidationError(exc.messages)
 
         return Response(BidSerializer(bid).data)
+
+
+class BidWithdrawView(APIView):
+    """Withdraw a pending bid — only the vendor who placed it."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, bid_id):
+        try:
+            bid = selectors.bid_get(bid_id=bid_id)
+        except Bid.DoesNotExist:
+            raise Http404
+
+        if bid.vendor.user_id != request.user.id:
+            raise PermissionDenied('Only the bidding vendor can withdraw this bid.')
+
+        try:
+            bid = services.bid_withdraw(bid=bid)
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.messages)
+
+        return Response(BidSerializer(bid).data)

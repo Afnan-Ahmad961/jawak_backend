@@ -1,13 +1,17 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import Http404
 from rest_framework import permissions, status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.design_requests import selectors, services
-from apps.design_requests.models import DesignRequest
-from apps.design_requests.serializers import DesignRequestSerializer
+from apps.design_requests.models import DesignReferenceImage, DesignRequest
+from apps.design_requests.serializers import (
+    DesignReferenceImageSerializer,
+    DesignRequestSerializer,
+)
 
 
 class DesignRequestListCreateView(APIView):
@@ -30,6 +34,8 @@ class DesignRequestListCreateView(APIView):
         return Response(DesignRequestSerializer(qs, many=True).data)
 
     def post(self, request):
+        if request.user.role != request.user.Role.CLIENT and not request.user.is_staff:
+            raise PermissionDenied('Only clients can post design requests.')
         serializer = DesignRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         design_request = services.design_request_create(
@@ -80,4 +86,46 @@ class DesignRequestDetailView(APIView):
         design_request = self.get_object(request_id)
         self._require_owner(request, design_request)
         services.design_request_delete(design_request=design_request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ReferenceImageView(APIView):
+    """Add or remove reference images (article artwork) on a request."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def _get_request(self, request, request_id):
+        try:
+            design_request = selectors.design_request_get(request_id=request_id)
+        except DesignRequest.DoesNotExist:
+            raise Http404
+        if design_request.client_id != request.user.id and not request.user.is_staff:
+            raise PermissionDenied('You can only modify your own requests.')
+        return design_request
+
+    def post(self, request, request_id):
+        design_request = self._get_request(request, request_id)
+        serializer = DesignReferenceImageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            reference = services.reference_image_add(
+                design_request=design_request, **serializer.validated_data
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.messages)
+        return Response(
+            DesignReferenceImageSerializer(reference).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def delete(self, request, request_id, image_id):
+        design_request = self._get_request(request, request_id)
+        try:
+            reference = selectors.reference_image_get(
+                design_request=design_request, image_id=image_id
+            )
+        except DesignReferenceImage.DoesNotExist:
+            raise Http404
+        services.reference_image_delete(reference=reference)
         return Response(status=status.HTTP_204_NO_CONTENT)

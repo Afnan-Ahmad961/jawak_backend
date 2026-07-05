@@ -2,7 +2,7 @@
 
 from django.core.exceptions import ValidationError
 
-from apps.vendors.models import VendorProfile
+from apps.vendors.models import PortfolioItem, VendorProfile
 
 
 def vendor_profile_create(
@@ -42,3 +42,16 @@ def vendor_profile_update(*, profile, data):
     profile.full_clean()
     profile.save()
     return profile
+
+
+def portfolio_item_add(*, vendor, image, title, description=''):
+    item = PortfolioItem(
+        vendor=vendor, image=image, title=title, description=description
+    )
+    item.full_clean()
+    item.save()
+    return item
+
+
+def portfolio_item_delete(*, item):
+    item.delete()
