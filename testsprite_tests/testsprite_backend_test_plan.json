@@ -1,0 +1,102 @@
+[
+  {
+    "id": "TC001",
+    "title": "Google auth rejects invalid token with 400",
+    "description": "POST /api/v1/user/auth/google/ with an invalid/garbage access_token (e.g. {\"access_token\": \"invalid_token_example\"}) must return HTTP 400 (not 500). Do NOT attempt the success/200 path — a real Google token is unavailable. Confirm the response body is JSON describing the validation error."
+  },
+  {
+    "id": "TC002",
+    "title": "GET /me requires auth and returns current user",
+    "description": "GET /api/v1/user/me/ with no Authorization header returns 401. With the CLIENT bearer token it returns 200 and a JSON object containing email 'ts_client@example.com' and role 'client'."
+  },
+  {
+    "id": "TC003",
+    "title": "Vendor can create/update own profile",
+    "description": "Using the VENDOR bearer token, PUT /api/v1/vendors/me/ with {company_name, location, specialties (array), capacity} returns 200 and the updated profile. Then GET /api/v1/vendors/me/ returns 200 reflecting the update."
+  },
+  {
+    "id": "TC004",
+    "title": "List vendors and retrieve vendor detail",
+    "description": "With the CLIENT bearer token, GET /api/v1/vendors/ returns 200 with a list. Pick a vendor id from the list and GET /api/v1/vendors/{vendor_id}/ returns 200 with that vendor. A non-existent id returns 404."
+  },
+  {
+    "id": "TC005",
+    "title": "Vendor portfolio create, list, delete",
+    "description": "With the VENDOR bearer token: POST /api/v1/vendors/me/portfolio/ as multipart form-data with an image file plus title returns 201. GET /api/v1/vendors/me/portfolio/ returns 200 including the new item. DELETE /api/v1/vendors/me/portfolio/{item_id}/ returns 204."
+  },
+  {
+    "id": "TC006",
+    "title": "Client creates a design request",
+    "description": "With the CLIENT bearer token, POST /api/v1/requests/ with JSON {title, description, apparel_type: 'hoodie', quantity: 100, material, color_preferences, sizes: [{\"size\":\"M\",\"quantity\":50},{\"size\":\"L\",\"quantity\":50}]} returns 201 with a request id and status 'open'. Missing required fields (e.g. no apparel_type/quantity) returns 400."
+  },
+  {
+    "id": "TC007",
+    "title": "List and retrieve design requests",
+    "description": "With the CLIENT token, GET /api/v1/requests/ returns 200 list. Create a request first if needed, then GET /api/v1/requests/{request_id}/ returns 200 with matching data. Non-existent id returns 404."
+  },
+  {
+    "id": "TC008",
+    "title": "Only owner can update a design request",
+    "description": "Create a design request with the CLIENT token. PATCH /api/v1/requests/{request_id}/ with the CLIENT token updates it (200). PATCH the same request with the VENDOR token must be forbidden (403) or not-found (404) — a non-owner cannot modify it."
+  },
+  {
+    "id": "TC009",
+    "title": "Vendor places a bid on a request",
+    "description": "Prereq: a client design request exists (create one with CLIENT token) and the VENDOR has a profile (TC003). With the VENDOR token, POST /api/v1/bids/ with {design_request: <id>, proposed_price: 1500.00, delivery_days: 20, message} returns 201 with status 'pending'."
+  },
+  {
+    "id": "TC010",
+    "title": "Duplicate bid from same vendor rejected",
+    "description": "After TC009, POST /api/v1/bids/ again with the VENDOR token for the SAME design_request must return 400 (unique bid per vendor per request constraint), not 500."
+  },
+  {
+    "id": "TC011",
+    "title": "Invalid bid values rejected",
+    "description": "With the VENDOR token, POST /api/v1/bids/ with proposed_price <= 0 or delivery_days < 1 returns 400. Bidding with a missing/invalid design_request id returns 400 or 404."
+  },
+  {
+    "id": "TC012",
+    "title": "Client accepts a bid, creating an order",
+    "description": "Prereq: a pending bid exists on the client's request (TC009). With the CLIENT token, PATCH /api/v1/bids/{bid_id}/status/ with {status: 'accepted'} returns 200 and the bid becomes 'accepted'. The parent request status becomes 'awarded'. Then GET /api/v1/orders/ with the CLIENT token returns 200 and includes the new order."
+  },
+  {
+    "id": "TC013",
+    "title": "Vendor withdraws a pending bid",
+    "description": "Create a fresh request+bid. With the VENDOR token, POST /api/v1/bids/{bid_id}/withdraw/ on a pending bid returns 200 and status becomes 'withdrawn'. Withdrawing an already-accepted bid returns 400."
+  },
+  {
+    "id": "TC014",
+    "title": "Order production update is forward-only",
+    "description": "Prereq: an active order exists (via TC012). With the VENDOR token, POST /api/v1/orders/{order_id}/production-updates/ with {stage: 'cutting', note} returns 201. Posting an earlier stage than current (e.g. 'sourcing' after 'cutting') returns 400 (forward-only enforcement)."
+  },
+  {
+    "id": "TC015",
+    "title": "Client confirms delivery to complete order",
+    "description": "Prereq: an active order (TC012). With the CLIENT token, POST /api/v1/orders/{order_id}/confirm-delivery/ returns 200 and the order status becomes 'completed'. A vendor token calling confirm-delivery should be forbidden."
+  },
+  {
+    "id": "TC016",
+    "title": "Review creation on a completed order",
+    "description": "Prereq: a completed order (TC015). With the CLIENT token, POST /api/v1/reviews/ with {order: <id>, rating: 5, comment} returns 201. Posting a second review from the same reviewer for the same order returns 400 (unique constraint). A rating outside 1-5 returns 400."
+  },
+  {
+    "id": "TC017",
+    "title": "Notifications list, mark read, mark all read",
+    "description": "With the VENDOR token (who should have received a 'new_bid'/'bid_accepted' notification during earlier flows), GET /api/v1/notifications/ returns 200 list. POST /api/v1/notifications/{id}/read/ returns 200 and is_read becomes true. POST /api/v1/notifications/read-all/ returns 200."
+  },
+  {
+    "id": "TC018",
+    "title": "Messaging: start conversation and send messages",
+    "description": "Prereq: a design request (CLIENT) and a vendor profile. With the CLIENT token, POST /api/v1/conversations/ with {design_request: <id>, vendor: <vendor_id>} returns 201. POST /api/v1/conversations/{conversation_id}/messages/ with {body: 'Hello'} returns 201. GET /api/v1/conversations/{conversation_id}/messages/ returns 200 including the message."
+  },
+  {
+    "id": "TC019",
+    "title": "Disputes: raise on order and admin resolves",
+    "description": "Prereq: an order exists. With the CLIENT token, POST /api/v1/disputes/ with {order: <id>, reason, description} returns 201 with status 'open'. PATCH /api/v1/disputes/{dispute_id}/ with the CLIENT (non-admin) token must be forbidden (403). PATCH with the ADMIN token {status: 'resolved', resolution: 'Refund issued'} returns 200 and status becomes 'resolved'."
+  },
+  {
+    "id": "TC020",
+    "title": "Analytics overview is admin-only",
+    "description": "GET /api/v1/analytics/overview/ with the CLIENT token returns 403. With the ADMIN token it returns 200 with aggregate metrics."
+  }
+]
