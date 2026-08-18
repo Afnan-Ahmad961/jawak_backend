@@ -108,7 +108,9 @@ DATABASES = {
         'HOST': os.getenv('DB_HOST'),
         'PORT': os.getenv('DB_PORT', '5432'),
         'OPTIONS': {
-            'sslmode': 'require',  # Required for Neon
+            # 'require' for Neon (default); set DB_SSLMODE=disable for a
+            # local Postgres container that doesn't serve SSL.
+            'sslmode': os.getenv('DB_SSLMODE', 'require'),
         },
     },
 }
