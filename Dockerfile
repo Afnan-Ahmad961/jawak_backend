@@ -17,6 +17,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the project.
 COPY . .
 
+# Run as an unprivileged user so a compromised process isn't root inside the
+# container. Give it ownership of the app dir for any runtime writes.
+RUN addgroup --system app \
+    && adduser --system --ingroup app app \
+    && chown -R app:app /app
+USER app
+
 EXPOSE 8000
 
 # Dev server. For production, run gunicorn against config.wsgi:application

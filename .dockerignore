@@ -16,6 +16,11 @@ media/
 *.log
 db.sqlite3
 
+# Secrets — supplied at runtime, never baked into the image
+.env
+.env.*
+!.env.example
+
 # Docker
 Dockerfile
 docker-compose.yml

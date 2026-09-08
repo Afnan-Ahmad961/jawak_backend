@@ -67,11 +67,23 @@
     const $ = (id) => document.getElementById(id);
     const setStatus = (msg, cls = "") => { $("status").className = "hint " + cls; $("status").textContent = msg; };
 
+    // Drop any previous session so a failed re-login can't reuse an old token.
+    const resetAuth = () => {
+      accessJwt = null;
+      $("me").disabled = true;
+      $("copy").disabled = true;
+    };
+
     // Wait for the Google Identity Services script, then set up the ID-token
     // ("Sign in with Google") flow. This uses a single account-chooser and
     // returns a signed credential (JWT) — no fragile consent popups.
+    let gisRetries = 0;
+    const GIS_MAX_RETRIES = 40; // ~6s at 150ms before giving up.
     function initWhenReady() {
       if (!window.google || !google.accounts || !google.accounts.id) {
+        if (gisRetries++ >= GIS_MAX_RETRIES) {
+          return setStatus("Could not load the Google sign-in client. Check your connection and reload.", "err");
+        }
         return setTimeout(initWhenReady, 150);
       }
       google.accounts.id.initialize({
@@ -92,7 +104,9 @@
     // requires the access_token field to be non-empty, so we send the
     // credential in both fields; the Google adapter only uses id_token here.
     async function onCredential(resp) {
-      console.log("Google credential response:", resp);
+      // Never log resp — it carries the Google ID token (a credential).
+      console.log("Received Google credential response.");
+      resetAuth();
       if (!resp || !resp.credential) return setStatus("No credential returned by Google.", "err");
       setStatus("Verifying with backend…");
       try {
@@ -121,11 +135,20 @@
 
     $("me").onclick = async () => {
       $("me-out").textContent = "…";
-      const r = await fetch(API_BASE + "/api/v1/user/me/", {
-        headers: { "Authorization": "Bearer " + accessJwt },
-      });
-      const data = await r.json();
-      $("me-out").textContent = JSON.stringify(data, null, 2);
+      try {
+        const r = await fetch(API_BASE + "/api/v1/user/me/", {
+          headers: { "Authorization": "Bearer " + accessJwt },
+        });
+        const text = await r.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        $("me-out").textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+        if (!r.ok) return setStatus("/me request failed (HTTP " + r.status + ").", "err");
+        setStatus("Fetched /me ✔", "ok");
+      } catch (e) {
+        $("me-out").textContent = "—";
+        setStatus("/me request failed: " + e.message, "err");
+      }
     };
 
     $("copy").onclick = async () => {
