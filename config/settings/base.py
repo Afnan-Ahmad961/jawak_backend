@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',
     'dj_rest_auth.registration',
     'storages',
+    'corsheaders',
 
     # Local apps
     'apps.user',
@@ -66,6 +67,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # CorsMiddleware must come first (before CommonMiddleware) so CORS headers
+    # are added even on early responses/redirects.
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -108,7 +112,9 @@ DATABASES = {
         'HOST': os.getenv('DB_HOST'),
         'PORT': os.getenv('DB_PORT', '5432'),
         'OPTIONS': {
-            'sslmode': 'require',  # Required for Neon
+            # 'require' for Neon (default); set DB_SSLMODE=disable for a
+            # local Postgres container that doesn't serve SSL.
+            'sslmode': os.getenv('DB_SSLMODE', 'require'),
         },
     },
 }
@@ -168,6 +174,17 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 SITE_ID = 1
+
+
+# CORS
+# Origins allowed to make cross-origin requests to the API (e.g. the frontend
+# dev server). Extend via the comma-separated CORS_ALLOWED_ORIGINS env var.
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+]
+_extra_cors = os.getenv('CORS_ALLOWED_ORIGINS', '')
+if _extra_cors:
+    CORS_ALLOWED_ORIGINS += [o.strip() for o in _extra_cors.split(',') if o.strip()]
 
 
 # Django REST Framework

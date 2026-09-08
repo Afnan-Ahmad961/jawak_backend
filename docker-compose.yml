@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: root
+      # Supplied at runtime (e.g. from .env); never commit a real password.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your .env}
+      POSTGRES_DB: jawak
+    ports:
+      # Bind to localhost only so Postgres isn't reachable from the network.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d jawak"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      # Point Django at the Postgres container instead of Neon.
+      # These override the DB_* values in .env (load_dotenv does not override
+      # variables already set in the environment).
+      DB_NAME: jawak
+      DB_USER: root
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your .env}
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_SSLMODE: disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

@@ -2,9 +2,9 @@ name: Django CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "dev" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "dev" ]
 
 jobs:
   build:
@@ -12,19 +12,68 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       max-parallel: 4
+      fail-fast: false
       matrix:
-        python-version: [3.7, 3.8, 3.9]
+        # Django 6.0 requires Python 3.12+.
+        python-version: ["3.12", "3.13"]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: root
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: jawak
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U root -d jawak"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      SECRET_KEY: ci-test-secret-key-not-for-production
+      DB_NAME: jawak
+      DB_USER: root
+      DB_PASSWORD: postgres
+      DB_HOST: localhost
+      DB_PORT: 5432
+      # The CI Postgres service doesn't serve SSL.
+      DB_SSLMODE: disable
 
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+    - name: Check for missing migrations
+      run: python manage.py makemigrations --check --dry-run
+    - name: Django system checks
+      run: python manage.py check
     - name: Run Tests
+      run: python manage.py test
+
+  docker:
+    # Build the image and validate compose so Dockerfile/compose regressions
+    # are caught in CI, not at deploy time.
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Validate docker compose config
+      env:
+        POSTGRES_PASSWORD: ci-validate
+      run: docker compose config
+    - name: Build image
+      run: docker build -t jawak-backend:ci .
+    - name: Container runs as non-root and passes system checks
       run: |
-        python manage.py test
+        test "$(docker run --rm jawak-backend:ci whoami)" = "app"
+        docker run --rm -e SECRET_KEY=ci-test -e DB_HOST=localhost \
+          jawak-backend:ci python manage.py check

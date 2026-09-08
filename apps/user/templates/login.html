@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jawak — Google Login</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      max-width: 760px; margin: 40px auto; padding: 0 20px; line-height: 1.5;
+    }
+    h1 { margin-bottom: 4px; }
+    .sub { color: #888; margin-top: 0; }
+    button {
+      font-size: 15px; padding: 10px 16px; border-radius: 8px;
+      border: 1px solid #4285f4; background: transparent; color: #4285f4; cursor: pointer;
+    }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 16px 0; }
+    pre {
+      background: rgba(127,127,127,.12); padding: 14px; border-radius: 8px;
+      overflow: auto; white-space: pre-wrap; word-break: break-all; font-size: 13px;
+    }
+    label { font-weight: 600; display: block; margin-top: 18px; }
+    .hint { font-size: 13px; color: #888; }
+    .ok { color: #1a7f37; } .err { color: #cf222e; }
+  </style>
+</head>
+<body>
+  <h1>Jawak</h1>
+  <p class="sub">Sign in with Google and get a backend JWT.</p>
+
+  <!--
+    Set this to the Google OAuth "Client ID" from Google Cloud Console.
+    It matches GOOGLE_OAUTH_CLIENT_ID in the backend .env. (A client ID is
+    public — safe to embed.) This must be a "Web application" OAuth client,
+    and the page's origin (http://localhost:8000) must be listed under
+    "Authorized JavaScript origins" for it.
+  -->
+  <script>
+    const GOOGLE_CLIENT_ID = "566046825964-852nus34fke4b531cen1oupmjahm6nks.apps.googleusercontent.com";
+    // Same-origin: the page is served by Django, so a relative API path works.
+    const API_BASE = "";
+  </script>
+
+  <!-- Google renders its official sign-in button into this container. -->
+  <div id="g_btn"></div>
+
+  <div class="row">
+    <button id="me" disabled>Call /me with token</button>
+    <button id="copy" disabled>Copy access token</button>
+  </div>
+
+  <p id="status" class="hint">Loading Google client…</p>
+
+  <label>Backend response (JWTs)</label>
+  <pre id="tokens">—</pre>
+
+  <label>/api/v1/user/me/ response</label>
+  <pre id="me-out">—</pre>
+
+  <script>
+    let accessJwt = null;
+
+    const $ = (id) => document.getElementById(id);
+    const setStatus = (msg, cls = "") => { $("status").className = "hint " + cls; $("status").textContent = msg; };
+
+    // Drop any previous session so a failed re-login can't reuse an old token.
+    const resetAuth = () => {
+      accessJwt = null;
+      $("me").disabled = true;
+      $("copy").disabled = true;
+    };
+
+    // Wait for the Google Identity Services script, then set up the ID-token
+    // ("Sign in with Google") flow. This uses a single account-chooser and
+    // returns a signed credential (JWT) — no fragile consent popups.
+    let gisRetries = 0;
+    const GIS_MAX_RETRIES = 40; // ~6s at 150ms before giving up.
+    function initWhenReady() {
+      if (!window.google || !google.accounts || !google.accounts.id) {
+        if (gisRetries++ >= GIS_MAX_RETRIES) {
+          return setStatus("Could not load the Google sign-in client. Check your connection and reload.", "err");
+        }
+        return setTimeout(initWhenReady, 150);
+      }
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: onCredential,
+        ux_mode: "popup",
+        auto_select: false,
+      });
+      google.accounts.id.renderButton($("g_btn"), {
+        theme: "outline", size: "large", text: "signin_with", shape: "pill",
+      });
+      setStatus("Ready. Click the Google button above.");
+    }
+    initWhenReady();
+
+    // resp.credential is a Google ID token (JWT). The backend verifies its
+    // signature against Google's certs and issues our own JWTs. dj-rest-auth
+    // requires the access_token field to be non-empty, so we send the
+    // credential in both fields; the Google adapter only uses id_token here.
+    async function onCredential(resp) {
+      // Never log resp — it carries the Google ID token (a credential).
+      console.log("Received Google credential response.");
+      resetAuth();
+      if (!resp || !resp.credential) return setStatus("No credential returned by Google.", "err");
+      setStatus("Verifying with backend…");
+      try {
+        const r = await fetch(API_BASE + "/api/v1/user/auth/google/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access_token: resp.credential, id_token: resp.credential }),
+        });
+        const data = await r.json();
+        $("tokens").textContent = JSON.stringify(data, null, 2);
+        if (!r.ok) return setStatus("Backend rejected login (HTTP " + r.status + ").", "err");
+
+        // dj-rest-auth returns "access"/"refresh" (older builds: *_token).
+        accessJwt = data.access || data.access_token || null;
+        if (accessJwt) {
+          $("me").disabled = false;
+          $("copy").disabled = false;
+          setStatus("Logged in. Got backend JWT ✔", "ok");
+        } else {
+          setStatus("Login succeeded but no access token found in response.", "err");
+        }
+      } catch (e) {
+        setStatus("Request failed: " + e.message, "err");
+      }
+    }
+
+    $("me").onclick = async () => {
+      $("me-out").textContent = "…";
+      try {
+        const r = await fetch(API_BASE + "/api/v1/user/me/", {
+          headers: { "Authorization": "Bearer " + accessJwt },
+        });
+        const text = await r.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        $("me-out").textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+        if (!r.ok) return setStatus("/me request failed (HTTP " + r.status + ").", "err");
+        setStatus("Fetched /me ✔", "ok");
+      } catch (e) {
+        $("me-out").textContent = "—";
+        setStatus("/me request failed: " + e.message, "err");
+      }
+    };
+
+    $("copy").onclick = async () => {
+      await navigator.clipboard.writeText(accessJwt);
+      setStatus("Access token copied to clipboard.", "ok");
+    };
+  </script>
+</body>
+</html>
