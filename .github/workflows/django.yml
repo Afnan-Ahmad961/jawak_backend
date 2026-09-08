@@ -58,3 +58,22 @@ jobs:
       run: python manage.py check
     - name: Run Tests
       run: python manage.py test
+
+  docker:
+    # Build the image and validate compose so Dockerfile/compose regressions
+    # are caught in CI, not at deploy time.
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Validate docker compose config
+      env:
+        POSTGRES_PASSWORD: ci-validate
+      run: docker compose config
+    - name: Build image
+      run: docker build -t jawak-backend:ci .
+    - name: Container runs as non-root and passes system checks
+      run: |
+        test "$(docker run --rm jawak-backend:ci whoami)" = "app"
+        docker run --rm -e SECRET_KEY=ci-test -e DB_HOST=localhost \
+          jawak-backend:ci python manage.py check
